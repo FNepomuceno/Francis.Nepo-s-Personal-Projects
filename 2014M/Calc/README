@@ -1,0 +1,57 @@
+Project NAPT (Not Another Paren-thesis)
+
+The overall goal of this project is to design a language
+similar to Haskell, but removing the rest of the
+parentheses.
+
+This idea came when I was learning Haskell and was
+introduced to Haskell's point-free syntactic style,
+whose goal is to reduce the amount of parentheses
+from the code in order to look elegant. This syntactic
+style contrasts Lisp's syntax, which includes
+parentheses everywhere, from which a major complaint
+was that the parentheses made it look alien, especially
+compared to other languages that existed.
+
+Haskell's point-free syntax however still requires
+parentheses, especially when trying to map certain
+functions like this:
+
+ map (+3) [9, 8, 7, 6]
+
+The point of this project is to take Haskell's point-free
+syntax ad absurdum and to completely remove all parentheses
+from the code, so that it would result in something
+like this:
+
+ map +3 [9 8 7 6]
+
+Haskell has an extensive type system that allows it to
+infer types of functions given its declaration; why not
+infer argument types as well?
+
+Its current state is a proof of concept of type inference
+of arguments, which is essentially an int calculator with
+the following functions: addition (+), subtraction(-),
+multiplication (*), division (/), and an extra function
+called again (>). The function > has the following type:
+
+ > :: (Int -> Int) -> Int -> Int
+
+This requires one of the binary operations to be partially
+applied, as > takes a unary op as an argument, showing
+a bare bones example of such a language that works.
+
+All functions are entered in prefix (Polish) form, where
+the arguments come after the operator instead of using infix
+form. In addition, infix form is very limited, such that not
+all functions that can be expressed in prefix form can be
+expressed in infix form, on top of infix form normally using
+a hierarchy system for operations, which just gets in
+the way of the program. Its limitations require the usage
+of parenthesis, of which the goal of this project is to avoid
+at all costs, so infix notation will not be used in the
+program.
+
+The program currently on runs as a REPL-like, so to allow
+quick experimentation. Enjoy!
