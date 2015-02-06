@@ -111,7 +111,7 @@ void addType(p_Char name, size_t size,
 	type->type_id = struct_id;
 	type->struct_id = TYPE_ID;
 	type->array = (p_Type)array->data;
-	//type->index = indexOf()
+	type->index = indexOf(name, array);
 }
 
 struct List {
@@ -178,25 +178,13 @@ void setSmrt(p_Smrt smrt, void *new_data, p_Type data_type) {
 	smrt->type = data_type;
 }
 
-void bindSmrt(pp_Smrt dst, p_Smrt src, p_Aray type_array) {
-	src->ref_locs = addListNode(dst, src->ref_locs, type_array);
-	src->num_refs = numRefs(src->ref_locs);
-	*dst = src;
-}
-
-void newSmrt(pp_Smrt smrt, void *new_data,
-		char *data_type, p_Aray type_array) {
-	p_Smrt new_smrt = newData("smrt", type_array);
-	setSmrt(new_smrt, new_data, getType(data_type, type_array));
-	bindSmrt(smrt, new_smrt, type_array);
-}
-
 void unbindSmrt(pp_Smrt loc) {
 	p_Smrt smrt;
 	p_List first;
 	if(loc == NULL) {
 		return;
 	}
+	
 	smrt = *loc;
 	first = removeAddr(loc, smrt->ref_locs);
 	smrt->ref_locs = first;
@@ -208,6 +196,35 @@ void unbindSmrt(pp_Smrt loc) {
 		free(smrt->data);
 		free(smrt);
 	}
+
+	//ensure loc cannot access any memory
+	*loc = NULL;
+}
+
+void bindSmrt(pp_Smrt dst, p_Smrt src, p_Aray type_array) {
+	src->ref_locs = addListNode(dst, src->ref_locs, type_array);
+	src->num_refs = numRefs(src->ref_locs);
+	*dst = src;
+}
+void toSmrt(pp_Smrt dst,
+		p_Smrt src, p_Aray type_array) {
+	unbindSmrt(dst);
+	bindSmrt(dst, src, type_array);
+}
+
+void newSmrt(pp_Smrt smrt, p_Char data_type,
+		p_Aray type_array) {
+	p_Smrt new_smrt = newData("smrt", type_array);
+	p_Void new_data = newData(data_type, type_array);
+	
+	setSmrt(new_smrt, new_data, getType(data_type, type_array));
+	bindSmrt(smrt, new_smrt, type_array);
+}
+
+void toNewSmrt(pp_Smrt smrt, p_Char data_type,
+		p_Aray type_array) {
+	unbindSmrt(smrt);
+	newSmrt(smrt, data_type, type_array);
 }
 
 struct Ftyp {
@@ -253,12 +270,42 @@ struct Stak {
 typedef void(*Prog)();
 void program0();
 void program1();
-Prog program = program1;
+void program2();
+Prog program = program2;
 #define TYPE_CAP 20
 
 int main(int argc, char *argv[]) {
 	program();
 	return 0;
+}
+
+/*
+	Making sure making smrts work
+*/
+void program2() {
+	//Set up array
+	p_Aray type_array = newArray(TYPE_CAP, sizeof(d_Type));
+	addType("list", sizeof(d_List), LIST_ID, type_array);
+	addType("smrt", sizeof(d_Smrt), SMRT_ID, type_array);
+	addType("data", sizeof(d_Data), DATA_ID, type_array);
+
+	//Memory for smrts
+	p_Smrt smrt1 = NULL, smrt2 = NULL;
+
+	//Set up smrts
+	newSmrt(&smrt1, "data", type_array);
+	bindSmrt(&smrt2, smrt1, type_array);
+
+	//Switch smrts
+	toNewSmrt(&smrt1, "data", type_array);
+	toSmrt(&smrt2, smrt1, type_array);
+
+	//Clean smrts
+	unbindSmrt(&smrt2);
+	unbindSmrt(&smrt1);
+
+	//Clean array
+	cleanArray(type_array);
 }
 
 /*
