@@ -24,6 +24,7 @@ typedef struct Stak d_Stak, *p_Stak, **pp_Stak;
 typedef char *p_Char;
 typedef void *p_Void;
 typedef void (*VoidFunc)(p_Void data);
+typedef void (*SetFunc)(p_Void dst, p_Void src);
 typedef void (*FuncFunc)(p_Tokn data);
 typedef p_Void (*PtrFunc)(p_Void data);
 
@@ -234,28 +235,38 @@ p_Void extractSmrt(p_Smrt smrt, p_Char type) {
 
 struct Ftyp {
 	int struct_id;
-	p_Ftyp array;
-	int index;
 	p_Char name;
 	size_t size;
+	p_Ftyp array;
+	int index;
 	p_Ftyp input;
 	p_Ftyp output;
 	VoidFunc print;
+	SetFunc set;
 };
 
-void newDataType(p_Char name, size_t size, p_Aray array) {
+void newDataType(p_Char name, size_t size,
+		p_Aray array, VoidFunc print, SetFunc set) {
 	p_Ftyp ftyp = (p_Ftyp)newEntry(array);
 	ftyp->struct_id = FTYP_ID;
-	ftyp->array = (p_Ftyp)array->data;
-	ftyp->index = indexOf(name, array);
 	ftyp->name = name;
 	ftyp->size = size;
+	ftyp->array = (p_Ftyp)array->data;
+	ftyp->index = indexOf(name, array);
+	ftyp->input = NULL;
+	ftyp->output = NULL;
+	ftyp->print = print;
+	ftyp->set = set;
 }
 
 //typedef void (*VoidFunc)(p_Void data);
 
 void printInt(p_Void data) {
 	printf("Int: %d\n", *(int *)data);
+}
+
+void setInt(p_Void dst, p_Void src) {
+	*(int *)dst = *(int *)src;
 }
 
 struct Tokn {
@@ -299,24 +310,57 @@ struct Stak {
 };
 
 /*
-	TODO Set up int ftyp
+	TODO Set up printData() and setData()
 	TODO Set up tokens
 	TODO Set up unary and binary func type
 	TODO Set up stack
 	TODO Parse input already
 */
 typedef void(*Prog)();
+#define TYPE_CAP 20
+#define FTYP_CAP 15
 void program0();
 void program1();
 void program2();
 void program3();
-Prog program = program3;
-#define TYPE_CAP 20
-#define FTYP_CAP 15
+void program4();
+Prog programs[] = {
+	program0,
+	program1,
+	program2,
+	program3,
+	program4
+};
 
 int main(int argc, char *argv[]) {
-	program();
+	int index, max = sizeof programs / sizeof (Prog);
+	for(index = 0; index < max; index += 1) {
+		printf("Running program %d:\n", index);
+		programs[index]();
+		printf("\n");
+	}
 	return 0;
+}
+
+/*
+	Testing ftyp_array data-type insertion
+*/
+void program4() {
+	//Set up type_array
+	p_Aray type_array = newArray(TYPE_CAP, sizeof(d_Type));
+	addType("list", sizeof(d_List), LIST_ID, type_array, 0);
+	addType("smrt", sizeof(d_Smrt), SMRT_ID, type_array, 0);
+	addType("data", sizeof(d_Data), DATA_ID, type_array,
+			getData);
+
+	//Set up ftyp_array
+	p_Aray ftyp_array = newArray(FTYP_CAP, sizeof(d_Ftyp));
+	newDataType("int", sizeof(int), ftyp_array,
+			printInt, setInt);
+
+	//Clean arrays
+	cleanArray(ftyp_array);
+	cleanArray(type_array);
 }
 
 /*
