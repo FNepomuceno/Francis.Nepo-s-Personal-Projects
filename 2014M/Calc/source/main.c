@@ -23,8 +23,9 @@ typedef struct Stak d_Stak, *p_Stak, **pp_Stak;
 
 typedef char *p_Char;
 typedef void *p_Void;
-typedef void(*VoidFunc)(p_Void data);
-typedef void(*FuncFunc)(p_Tokn data);
+typedef void (*VoidFunc)(p_Void data);
+typedef void (*FuncFunc)(p_Tokn data);
+typedef p_Void (*PtrFunc)(p_Void data);
 
 /*
 	araytype.h
@@ -66,11 +67,12 @@ p_Void newEntry(p_Aray array) {
 
 struct Type {
 	int struct_id;
-	p_Type array;
-	int index;
 	int type_id;
 	p_Char name;
 	size_t size;
+	p_Type array;
+	int index;
+	PtrFunc extract;
 };
 
 int indexOf(p_Char type, p_Aray array) {
@@ -104,14 +106,15 @@ p_Void newData(p_Char type, p_Aray array) {
 }
 
 void addType(p_Char name, size_t size,
-		int struct_id, p_Aray array) {
+		int struct_id, p_Aray array, PtrFunc func) {
 	p_Type type = (p_Type)newEntry(array);
+	type->struct_id = TYPE_ID;
+	type->type_id = struct_id;
 	type->name = name;
 	type->size = size;
-	type->type_id = struct_id;
-	type->struct_id = TYPE_ID;
 	type->array = (p_Type)array->data;
 	type->index = indexOf(name, array);
+	type->extract = func;
 }
 
 struct List {
@@ -120,7 +123,6 @@ struct List {
 	p_List next;
 };
 
-p_List newListNode(void *loc);
 p_List addListNode(p_Void loc, p_List other_refs,
 		p_Aray type_array) {
 	p_List new_node;
@@ -170,7 +172,7 @@ struct Smrt {
 	int num_refs;
 	p_List ref_locs;
 	p_Type type;
-	void *data;
+	p_Void data;
 };
 
 void setSmrt(p_Smrt smrt, void *new_data, p_Type data_type) {
@@ -202,18 +204,19 @@ void unbindSmrt(pp_Smrt loc) {
 }
 
 void bindSmrt(pp_Smrt dst, p_Smrt src, p_Aray type_array) {
+	if(*dst != NULL) {
+		unbindSmrt(dst);
+	}
 	src->ref_locs = addListNode(dst, src->ref_locs, type_array);
 	src->num_refs = numRefs(src->ref_locs);
 	*dst = src;
 }
-void toSmrt(pp_Smrt dst,
-		p_Smrt src, p_Aray type_array) {
-	unbindSmrt(dst);
-	bindSmrt(dst, src, type_array);
-}
 
 void newSmrt(pp_Smrt smrt, p_Char data_type,
 		p_Aray type_array) {
+	if(*smrt != NULL) {
+		unbindSmrt(smrt);
+	}
 	p_Smrt new_smrt = newData("smrt", type_array);
 	p_Void new_data = newData(data_type, type_array);
 	
@@ -221,22 +224,40 @@ void newSmrt(pp_Smrt smrt, p_Char data_type,
 	bindSmrt(smrt, new_smrt, type_array);
 }
 
-void toNewSmrt(pp_Smrt smrt, p_Char data_type,
-		p_Aray type_array) {
-	unbindSmrt(smrt);
-	newSmrt(smrt, data_type, type_array);
+p_Void extractSmrt(p_Smrt smrt, p_Char type) {
+	if(strcmp(type, smrt->type->name) != 0) {
+		printf("TYPE DOES NOT MATCH\n");
+		return NULL;
+	}
+	return smrt->type->extract(smrt->data);
 }
 
 struct Ftyp {
 	int struct_id;
 	p_Ftyp array;
 	int index;
-	char *name;
-	int size;
+	p_Char name;
+	size_t size;
 	p_Ftyp input;
 	p_Ftyp output;
 	VoidFunc print;
 };
+
+void newDataType(p_Char name, size_t size, p_Aray array) {
+	p_Ftyp ftyp = (p_Ftyp)newEntry(array);
+	ftyp->struct_id = FTYP_ID;
+	ftyp->array = (p_Ftyp)array->data;
+	ftyp->index = indexOf(name, array);
+	ftyp->name = name;
+	ftyp->size = size;
+}
+
+//typedef void (*VoidFunc)(p_Void data);
+
+void printInt(p_Void data) {
+	printf("Int: %d\n", *(int *)data);
+}
+
 struct Tokn {
 	int struct_id;
 	char *name;
@@ -246,12 +267,26 @@ struct Tokn {
 	p_Smrt input;
 	p_Smrt output;
 };
+
 struct Data {
 	int struct_id;
 	void *data;
 	p_Ftyp type;
 	int size;
 };
+
+p_Void getData(p_Void data) {
+	if(((p_Data)data)->struct_id == 0) {
+		((p_Data)data)->struct_id = DATA_ID;
+		return data;
+	}
+	if(((p_Data)data)->struct_id != DATA_ID) {
+		printf("INVALID STRUCT ID\n");
+		return NULL;
+	}
+	return data;
+}
+
 struct Func {
 	int struct_id;
 	p_Func array;
@@ -264,19 +299,47 @@ struct Stak {
 };
 
 /*
-	TODO Set up smrt binding and unbinding
-	TODO Set up data_smrt and int ftyp
+	TODO Set up int ftyp
+	TODO Set up tokens
+	TODO Set up unary and binary func type
+	TODO Set up stack
+	TODO Parse input already
 */
 typedef void(*Prog)();
 void program0();
 void program1();
 void program2();
-Prog program = program2;
+void program3();
+Prog program = program3;
 #define TYPE_CAP 20
+#define FTYP_CAP 15
 
 int main(int argc, char *argv[]) {
 	program();
 	return 0;
+}
+
+/*
+	Extracting data from structs
+*/
+void program3() {
+	p_Aray type_array = newArray(TYPE_CAP, sizeof(d_Type));
+	addType("list", sizeof(d_List), LIST_ID, type_array, 0);
+	addType("smrt", sizeof(d_Smrt), SMRT_ID, type_array, 0);
+	addType("data", sizeof(d_Data), DATA_ID, type_array,
+			getData);
+
+	p_Smrt smrt1 = NULL;
+	newSmrt(&smrt1, "data", type_array);
+
+	p_Data data1 = (p_Data)extractSmrt(smrt1, "data");
+	printf("data1 at %p\n", data1);
+	p_Data data2 = (p_Data)extractSmrt(smrt1, "smrt");
+	printf("data2 at %p\n", data2);
+	
+	unbindSmrt(&smrt1);
+	
+	cleanArray(type_array);
 }
 
 /*
@@ -285,9 +348,10 @@ int main(int argc, char *argv[]) {
 void program2() {
 	//Set up array
 	p_Aray type_array = newArray(TYPE_CAP, sizeof(d_Type));
-	addType("list", sizeof(d_List), LIST_ID, type_array);
-	addType("smrt", sizeof(d_Smrt), SMRT_ID, type_array);
-	addType("data", sizeof(d_Data), DATA_ID, type_array);
+	addType("list", sizeof(d_List), LIST_ID, type_array, 0);
+	addType("smrt", sizeof(d_Smrt), SMRT_ID, type_array, 0);
+	addType("data", sizeof(d_Data), DATA_ID, type_array,
+			getData);
 
 	//Memory for smrts
 	p_Smrt smrt1 = NULL, smrt2 = NULL;
@@ -297,8 +361,8 @@ void program2() {
 	bindSmrt(&smrt2, smrt1, type_array);
 
 	//Switch smrts
-	toNewSmrt(&smrt1, "data", type_array);
-	toSmrt(&smrt2, smrt1, type_array);
+	newSmrt(&smrt1, "data", type_array);
+	bindSmrt(&smrt2, smrt1, type_array);
 
 	//Clean smrts
 	unbindSmrt(&smrt2);
@@ -314,8 +378,8 @@ void program2() {
 */
 void program1() {
 	p_Aray type_array = newArray(TYPE_CAP, sizeof(d_Type));
-	addType("list", sizeof(d_List), LIST_ID, type_array);
-	addType("smrt", sizeof(d_Smrt), SMRT_ID, type_array);
+	addType("list", sizeof(d_List), LIST_ID, type_array, 0);
+	addType("smrt", sizeof(d_Smrt), SMRT_ID, type_array, 0);
 	cleanArray(type_array);
 }
 
