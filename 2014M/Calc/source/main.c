@@ -74,6 +74,7 @@ struct Type {
 	p_Type array;
 	int index;
 	PtrFunc extract;
+	VoidFunc set_type;
 };
 
 int indexOf(p_Char type, p_Aray array) {
@@ -103,11 +104,12 @@ p_Void newData(p_Char type, p_Aray array) {
 
 	data_size = type_array[index].size;
 	new_data = calloc(1, data_size);
+	type_array[index].set_type(new_data);
 	return new_data;
 }
 
-void addType(p_Char name, size_t size,
-		int struct_id, p_Aray array, PtrFunc func) {
+void addType(p_Char name, size_t size, int struct_id,
+		p_Aray array, PtrFunc func, VoidFunc setter) {
 	p_Type type = (p_Type)newEntry(array);
 	type->struct_id = TYPE_ID;
 	type->type_id = struct_id;
@@ -116,6 +118,7 @@ void addType(p_Char name, size_t size,
 	type->array = (p_Type)array->data;
 	type->index = indexOf(name, array);
 	type->extract = func;
+	type->set_type = setter;
 }
 
 struct List {
@@ -166,6 +169,13 @@ p_List removeAddr(void *loc, p_List first) {
 		nxt = nxt->next;
 	}
 	return NULL;
+}
+
+void setListType(void *data) {
+	if(((p_List)data)->struct_id != 0) {
+		printf("INVALID SET\n");
+	}
+	((p_List)data)->struct_id = LIST_ID;
 }
 
 struct Smrt {
@@ -233,6 +243,13 @@ p_Void extractSmrt(p_Smrt smrt, p_Char type) {
 	return smrt->type->extract(smrt->data);
 }
 
+void setSmrtType(void *data) {
+	if(((p_Smrt)data)->struct_id != 0) {
+		printf("INVALID SET\n");
+	}
+	((p_Smrt)data)->struct_id = SMRT_ID;
+}
+
 struct Ftyp {
 	int struct_id;
 	p_Char name;
@@ -244,6 +261,11 @@ struct Ftyp {
 	VoidFunc print;
 	SetFunc set;
 };
+
+p_Ftyp getFtyp(p_Char type, p_Aray array) {
+	int index = indexOf(type, array);
+	return &((p_Ftyp)array->data)[index];	
+}
 
 void newDataType(p_Char name, size_t size,
 		p_Aray array, VoidFunc print, SetFunc set) {
@@ -262,11 +284,21 @@ void newDataType(p_Char name, size_t size,
 //typedef void (*VoidFunc)(p_Void data);
 
 void printInt(p_Void data) {
-	printf("Int: %d\n", *(int *)data);
+	if(data != NULL) {
+		printf("Int: %d\n", *(int *)data);
+	}
+	else {
+		printf("ERROR: DATA IS NULL\n");
+	}
 }
 
 void setInt(p_Void dst, p_Void src) {
-	*(int *)dst = *(int *)src;
+	if(src != NULL && dst != NULL) {
+		*(int *)dst = *(int *)src;
+	}
+	else {
+		printf("ERROR: DATA IS NULL\n");
+	}
 }
 
 struct Tokn {
@@ -287,15 +319,71 @@ struct Data {
 };
 
 p_Void getData(p_Void data) {
-	if(((p_Data)data)->struct_id == 0) {
-		((p_Data)data)->struct_id = DATA_ID;
-		return data;
-	}
 	if(((p_Data)data)->struct_id != DATA_ID) {
 		printf("INVALID STRUCT ID\n");
 		return NULL;
 	}
 	return data;
+}
+
+void printData(p_Smrt smrt, p_Char data_type) {
+	p_Data data = (p_Data)extractSmrt(smrt, "data");
+	if(data == NULL) {
+		printf("ERROR: DATA NULL\n");
+		return;
+	}
+	p_Ftyp type = data->type;
+	if(strcmp(type->name, data_type) != 0) {
+		printf("ERROR: Incompatible data type\n");
+	}
+
+	type->print(data->data);
+}
+
+void unsetData(p_Smrt smrt) {
+	if(smrt == NULL) {return;}
+	p_Data data = (p_Data)extractSmrt(smrt, "data");
+	if(data == NULL) {return;}
+
+	free(data->data);
+	data->data = NULL;
+}
+
+void setNewData(pp_Smrt smrt_ref, p_Char data_type,
+		p_Aray ftyp_array, p_Aray type_array, p_Void src) {
+	//makes the smrt container for the Data
+	//and extracts the Data to insert its contents
+	newSmrt(smrt_ref, "data", type_array);
+	p_Data data = (p_Data)extractSmrt(*smrt_ref, "data");
+
+	//inserting its contents
+	p_Ftyp type = getFtyp(data_type, ftyp_array);
+	size_t size = type->size;
+	data->type = type;
+	data->data = calloc(1, size);
+
+	//setting the contents
+	type->set(data->data, src);
+}
+
+void setData(pp_Smrt smrt_ref, p_Char data_type,
+		p_Aray ftyp_array, p_Aray type_array, p_Void src) {
+	if(*smrt_ref == NULL) {
+		setNewData(smrt_ref, data_type, ftyp_array,
+				type_array, src);
+	}
+	else {
+		p_Data data = (p_Data)extractSmrt(*smrt_ref, "data");
+		p_Ftyp type = data->type;
+		type->set(data->data, src);
+	}
+}
+
+void setDataType(void *data) {
+	if(((p_Data)data)->struct_id != 0) {
+		printf("INVALID SET\n");
+	}
+	((p_Data)data)->struct_id = DATA_ID;
 }
 
 struct Func {
@@ -310,7 +398,6 @@ struct Stak {
 };
 
 /*
-	TODO Set up printData() and setData()
 	TODO Set up tokens
 	TODO Set up unary and binary func type
 	TODO Set up stack
@@ -348,15 +435,31 @@ int main(int argc, char *argv[]) {
 void program4() {
 	//Set up type_array
 	p_Aray type_array = newArray(TYPE_CAP, sizeof(d_Type));
-	addType("list", sizeof(d_List), LIST_ID, type_array, 0);
-	addType("smrt", sizeof(d_Smrt), SMRT_ID, type_array, 0);
+	addType("list", sizeof(d_List), LIST_ID, type_array,
+			0, setListType);
+	addType("smrt", sizeof(d_Smrt), SMRT_ID, type_array,
+			0, setSmrtType);
 	addType("data", sizeof(d_Data), DATA_ID, type_array,
-			getData);
+			getData, setDataType);
 
 	//Set up ftyp_array
 	p_Aray ftyp_array = newArray(FTYP_CAP, sizeof(d_Ftyp));
 	newDataType("int", sizeof(int), ftyp_array,
 			printInt, setInt);
+
+	//Sample data
+	p_Smrt smrt1 = NULL;
+	int test = 4;
+	setData(&smrt1, "int", ftyp_array, type_array, &test);
+	printData(smrt1, "int");
+
+	test = 5;
+	setData(&smrt1, "int", ftyp_array, type_array, &test);
+	printData(smrt1, "int");
+
+	//Clean up data
+	unsetData(smrt1);
+	unbindSmrt(&smrt1);
 
 	//Clean arrays
 	cleanArray(ftyp_array);
@@ -368,10 +471,12 @@ void program4() {
 */
 void program3() {
 	p_Aray type_array = newArray(TYPE_CAP, sizeof(d_Type));
-	addType("list", sizeof(d_List), LIST_ID, type_array, 0);
-	addType("smrt", sizeof(d_Smrt), SMRT_ID, type_array, 0);
+	addType("list", sizeof(d_List), LIST_ID, type_array,
+			0, setListType);
+	addType("smrt", sizeof(d_Smrt), SMRT_ID, type_array,
+			0, setSmrtType);
 	addType("data", sizeof(d_Data), DATA_ID, type_array,
-			getData);
+			getData, setDataType);
 
 	p_Smrt smrt1 = NULL;
 	newSmrt(&smrt1, "data", type_array);
@@ -392,10 +497,12 @@ void program3() {
 void program2() {
 	//Set up array
 	p_Aray type_array = newArray(TYPE_CAP, sizeof(d_Type));
-	addType("list", sizeof(d_List), LIST_ID, type_array, 0);
-	addType("smrt", sizeof(d_Smrt), SMRT_ID, type_array, 0);
+	addType("list", sizeof(d_List), LIST_ID, type_array,
+			0, setListType);
+	addType("smrt", sizeof(d_Smrt), SMRT_ID, type_array,
+			0, setSmrtType);
 	addType("data", sizeof(d_Data), DATA_ID, type_array,
-			getData);
+			getData, setDataType);
 
 	//Memory for smrts
 	p_Smrt smrt1 = NULL, smrt2 = NULL;
@@ -422,8 +529,10 @@ void program2() {
 */
 void program1() {
 	p_Aray type_array = newArray(TYPE_CAP, sizeof(d_Type));
-	addType("list", sizeof(d_List), LIST_ID, type_array, 0);
-	addType("smrt", sizeof(d_Smrt), SMRT_ID, type_array, 0);
+	addType("list", sizeof(d_List), LIST_ID, type_array,
+			0, setListType);
+	addType("smrt", sizeof(d_Smrt), SMRT_ID, type_array,
+			0, setSmrtType);
 	cleanArray(type_array);
 }
 
