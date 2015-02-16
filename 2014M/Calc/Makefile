@@ -8,9 +8,11 @@ obj := $(cod:$(src)=$(dst))
 ndr := $(notdir $(cod))
 org := $(ndr:$(src)=$(dst))
 name := calc
+cc := gcc
+flags := $(org) -Wall -Werror -o $(name)
 
 all: $(obj)
-	@gcc $(org) -Wall -Werror -o $(name)
+	@$(cc) $(flags)
 	@rm -f *.o
 	@objdump -D $(name) > $(dcm)$(name).txt
 %.o:
@@ -27,4 +29,6 @@ todo:
 	@reset; ls --color=auto
 	@cat source/header/*.h source/*.c | grep 'TODO' --color=AUTO
 debug:
-	@make clean; make > debug.txt 2>&1; valgrind --leak-check=full ./calc >> debug.txt 2>&1; clear; cat debug.txt | less
+	@make clean; make > debug.txt 2>&1
+	@valgrind --leak-check=full ./calc >> debug.txt 2>&1
+	@clear; cat debug.txt | less

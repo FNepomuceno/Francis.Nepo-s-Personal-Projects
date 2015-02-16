@@ -22,11 +22,12 @@ typedef struct Func d_Func, *p_Func, **pp_Func;
 typedef struct Stak d_Stak, *p_Stak, **pp_Stak;
 
 typedef char *p_Char;
-typedef void *p_Void;
+typedef void *p_Void, **pp_Void;
 typedef void (*VoidFunc)(p_Void data);
 typedef void (*SetFunc)(p_Void dst, p_Void src);
 typedef void (*FuncFunc)(p_Tokn data);
 typedef p_Void (*PtrFunc)(p_Void data);
+typedef p_Ftyp (*FtypFunc)(p_Void data);
 
 /*
 	araytype.h
@@ -309,22 +310,72 @@ struct Tokn {
 	p_Ftyp func_type;
 	p_Smrt input;
 	p_Smrt output;
+	VoidFunc clean_data;
 };
+
+void unsetTokn(p_Smrt smrt) {
+	if(smrt == NULL) {return;}
+	p_Tokn tokn = (p_Tokn)extractSmrt(smrt, "tokn");
+	if(tokn == NULL) {return;}
+
+	//Deallocate memory and set it to null
+	tokn->clean_data(&(tokn->data));
+	tokn->data = NULL;
+}
+
+void setDataTokn(p_Void data_ref, p_Char type,
+		p_Aray type_array, pp_Void src) {
+	if(strcmp("data", type) == 0) {
+		pp_Smrt smrt_ref = (pp_Smrt)data_ref;
+		bindSmrt(smrt_ref, *(pp_Smrt)src, type_array);
+		unbindSmrt((pp_Smrt)src);
+	}
+	else {
+		*(pp_Void)data_ref = *src;
+	}
+}
+
+void setTokn(pp_Smrt smrt_ref, p_Char name, p_Char data_type,
+		VoidFunc cleaner, p_Aray type_array, FtypFunc get_ftyp,
+		pp_Void src) {
+	//makes the smrt container for the Tokn
+	//and extracts the Tokn to insert its contents
+	newSmrt(smrt_ref, "tokn", type_array);
+	p_Tokn tokn = (p_Tokn)extractSmrt(*smrt_ref, "tokn");
+
+	//setting its contents
+	p_Type type = getType(data_type, type_array);
+	tokn->name = name;
+	tokn->data_type = type;
+	tokn->func_type = get_ftyp(*src);
+	tokn->input = NULL;
+	tokn->output = NULL;
+	tokn->clean_data = cleaner;
+	setDataTokn(&(tokn->data), data_type, type_array, src);
+}
+
+p_Void getTokn(p_Void data) {
+	if(((p_Tokn)data)->struct_id != TOKN_ID) {
+		printf("INVALID STRUCT ID: \n");
+		printf("EXPECTED %d\n", TOKN_ID);
+		printf("RECEIVED %d\n", ((p_Tokn)data)->struct_id);
+		return NULL;
+	}
+	return data;
+}
+
+void setToknType(void *data) {
+	if(((p_Tokn)data)->struct_id != 0) {
+		printf("INVALID SET\n");
+	}
+	((p_Tokn)data)->struct_id = TOKN_ID;
+}
 
 struct Data {
 	int struct_id;
 	void *data;
 	p_Ftyp type;
-	int size;
 };
-
-p_Void getData(p_Void data) {
-	if(((p_Data)data)->struct_id != DATA_ID) {
-		printf("INVALID STRUCT ID\n");
-		return NULL;
-	}
-	return data;
-}
 
 void printData(p_Smrt smrt, p_Char data_type) {
 	p_Data data = (p_Data)extractSmrt(smrt, "data");
@@ -379,11 +430,30 @@ void setData(pp_Smrt smrt_ref, p_Char data_type,
 	}
 }
 
-void setDataType(void *data) {
+p_Void getData(p_Void data) {
+	if(((p_Data)data)->struct_id != DATA_ID) {
+		printf("INVALID STRUCT ID\n");
+		return NULL;
+	}
+	return data;
+}
+
+void setDataType(p_Void data) {
 	if(((p_Data)data)->struct_id != 0) {
 		printf("INVALID SET\n");
 	}
 	((p_Data)data)->struct_id = DATA_ID;
+}
+
+p_Ftyp dataFtyp(p_Void data) {
+	p_Data stuf = (p_Data)extractSmrt((p_Smrt)data, "data");
+	return stuf->type;
+}
+
+void cleanData(p_Void data) {
+	pp_Smrt smrt_ref = (pp_Smrt)data;
+	unsetData(*smrt_ref);
+	unbindSmrt(smrt_ref);
 }
 
 struct Func {
@@ -398,25 +468,19 @@ struct Stak {
 };
 
 /*
-	TODO Set up tokens
 	TODO Set up unary and binary func type
+	TODO Extract data from tokens
 	TODO Set up stack
 	TODO Parse input already
 */
 typedef void(*Prog)();
 #define TYPE_CAP 20
 #define FTYP_CAP 15
-void program0();
-void program1();
-void program2();
-void program3();
-void program4();
+void program0(), program1(), program2(),
+	 program3(), program4(), program5();
 Prog programs[] = {
-	program0,
-	program1,
-	program2,
-	program3,
-	program4
+	program0, program1, program2,
+	program3, program4, program5
 };
 
 int main(int argc, char *argv[]) {
@@ -427,6 +491,45 @@ int main(int argc, char *argv[]) {
 		printf("\n");
 	}
 	return 0;
+}
+
+/*
+	Testing ftyp_array data-type insertion
+*/
+void program5() {
+	//Set up type_array
+	p_Aray type_array = newArray(TYPE_CAP, sizeof(d_Type));
+	addType("list", sizeof(d_List), LIST_ID, type_array,
+			0, setListType);
+	addType("smrt", sizeof(d_Smrt), SMRT_ID, type_array,
+			0, setSmrtType);
+	addType("data", sizeof(d_Data), DATA_ID, type_array,
+			getData, setDataType);
+	addType("tokn", sizeof(d_Tokn), TOKN_ID, type_array,
+			getTokn, setToknType);
+
+	//Set up ftyp_array
+	p_Aray ftyp_array = newArray(FTYP_CAP, sizeof(d_Ftyp));
+	newDataType("int", sizeof(int), ftyp_array,
+			printInt, setInt);
+
+	//Sample data
+	p_Smrt sdat = NULL, stok = NULL;
+	int test = 4;
+	setData(&sdat, "int", ftyp_array, type_array, &test);
+	printData(sdat, "int");
+	setTokn(&stok, "4", "data", cleanData, type_array,
+			dataFtyp, (pp_Void)&sdat);
+	printData(((p_Smrt)
+			((p_Tokn)extractSmrt(stok, "tokn"))->data), "int");
+
+	//Clean up data
+	unsetTokn(stok);
+	unbindSmrt(&stok);
+
+	//Clean arrays
+	cleanArray(ftyp_array);
+	cleanArray(type_array);
 }
 
 /*
