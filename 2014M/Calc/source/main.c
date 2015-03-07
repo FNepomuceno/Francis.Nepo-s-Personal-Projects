@@ -335,7 +335,7 @@ void setDataTokn(p_Void data_ref, p_Char type,
 	}
 }
 
-void setTokn(pp_Smrt smrt_ref, p_Char name, p_Char data_type,
+void newTokn(pp_Smrt smrt_ref, p_Char name, p_Char data_type,
 		VoidFunc cleaner, p_Aray type_array, FtypFunc get_ftyp,
 		pp_Void src) {
 	//makes the smrt container for the Tokn
@@ -352,6 +352,13 @@ void setTokn(pp_Smrt smrt_ref, p_Char name, p_Char data_type,
 	tokn->output = NULL;
 	tokn->clean_data = cleaner;
 	setDataTokn(&(tokn->data), data_type, type_array, src);
+}
+
+void *getToknData(p_Smrt smrt_tokn) {
+	p_Smrt smrt_data = ((p_Smrt)
+		((p_Tokn)extractSmrt(smrt_tokn, "tokn"))->data);
+	void *data = extractSmrt(smrt_data, "data");//TODO There should be a better way to do this... using the tokn struct?
+	return data;
 }
 
 p_Void getTokn(p_Void data) {
@@ -469,7 +476,6 @@ struct Stak {
 
 /*
 	TODO Set up unary and binary func type
-	TODO Extract data from tokens
 	TODO Set up stack
 	TODO Parse input already
 */
@@ -477,7 +483,8 @@ typedef void(*Prog)();
 #define TYPE_CAP 20
 #define FTYP_CAP 15
 void program0(), program1(), program2(),
-	 program3(), program4(), program5();
+	 program3(), program4(), program5(),
+	 program6();
 Prog programs[] = {
 	program0, program1, program2,
 	program3, program4, program5
@@ -491,6 +498,12 @@ int main(int argc, char *argv[]) {
 		printf("\n");
 	}
 	return 0;
+}
+
+/*
+*/
+void program6() {
+	
 }
 
 /*
@@ -518,10 +531,12 @@ void program5() {
 	int test = 4;
 	setData(&sdat, "int", ftyp_array, type_array, &test);
 	printData(sdat, "int");
-	setTokn(&stok, "4", "data", cleanData, type_array,
+	newTokn(&stok, "4", "data", cleanData, type_array,
 			dataFtyp, (pp_Void)&sdat);
 	printData(((p_Smrt)
 			((p_Tokn)extractSmrt(stok, "tokn"))->data), "int");
+	p_Data test_data = (p_Data)getToknData(stok);
+	printf("%d", *(int *)(test_data->data));
 
 	//Clean up data
 	unsetTokn(stok);
